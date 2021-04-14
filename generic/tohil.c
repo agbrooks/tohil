@@ -10,47 +10,21 @@
 // https://github.com/flightaware/tohil
 //
 
-// include Python.h before including any standard header files
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <object.h>
-
-#include <tcl.h>
-
-#include <assert.h>
-#include <dlfcn.h>
-
-#include <stdio.h>
-
-// forward definitions
-
-// tclobj python data type that consists of a standard python
-// object header and then our sole addition, a pointer to
-// a Tcl_Obj.  we dig into tclobj using the tcl C api in our
-// methods and functions that implement the type.
-typedef struct {
-    PyObject_HEAD;
-    Tcl_Obj *tclobj;
-} PyTclObj;
-
-int PyTclObj_Check(PyObject *pyObj);
-static PyTypeObject PyTclObjType;
-
-PyObject *tohil_python_return(Tcl_Interp *, int tcl_result, PyObject *toType, Tcl_Obj *resultObj);
+#include "tohil.h"
 
 // TCL library begins here
 
 // maintain a pointer to the tcl interp - we need it from our stuff python calls where
 // we don't get passed an interpreter
 
-static Tcl_Interp *tcl_interp = NULL;
+Tcl_Interp *tcl_interp = NULL;
 
 // maintain pointers to our exception handler and python function that
 // we return as our iterator object
 // NB this could be a problem if either of these functions get redefined
-static PyObject *pTohilHandleException = NULL;
-static PyObject *pTohilTclErrorClass = NULL;
-static PyObject *pyTclObjIterator = NULL;
+PyObject *pTohilHandleException = NULL;
+PyObject *pTohilTclErrorClass = NULL;
+PyObject *pyTclObjIterator = NULL;
 
 //
 // turn a tcl list into a python list
@@ -397,8 +371,6 @@ PyReturnException(Tcl_Interp *interp, char *description)
 // call python from tcl with very explicit arguments versus
 //   slamming stuff through eval
 //
-//   NB we need one like this going the other direction
-//
 static int
 TohilCall_Cmd(ClientData clientData, /* Not used. */
               Tcl_Interp *interp,    /* Current interpreter */
@@ -654,7 +626,7 @@ TohilInteract_Cmd(ClientData clientData, /* Not used. */
 //
 // return true if python object is a tclobj type
 //
-int
+static int
 PyTclObj_Check(PyObject *pyObj)
 {
     return PyObject_TypeCheck(pyObj, &PyTclObjType);
@@ -1657,15 +1629,6 @@ PyTclObj_subscript(PyTclObj *self, PyObject *item)
 // start of tclobj td_iterator python datatype
 //
 //
-
-typedef struct {
-    PyObject_HEAD;
-    int started;
-    int done;
-    PyObject *to;
-    Tcl_Obj *dictObj;
-    Tcl_DictSearch search;
-} PyTohil_TD_IterObj;
 
 static PyObject *
 PyTohil_TD_iter(PyTohil_TD_IterObj *self)
