@@ -127,8 +127,8 @@ AC_SUBST(PYTHON_VERSION)
 # and PKG_TCL_SOURCES.
 #-----------------------------------------------------------------------
 
-TEA_ADD_SOURCES([tohil.c])
-TEA_ADD_HEADERS([generic/tohil.c])
+TEA_ADD_SOURCES([tohil.c tclobj.c])
+TEA_ADD_HEADERS([generic/tohil.h])
 TEA_ADD_INCLUDES([])
 TEA_ADD_LIBS([])
 TEA_ADD_CFLAGS([])

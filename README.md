@@ -643,7 +643,7 @@ o.td_get('c', to=int)
 
 this needs to be built into the makefile or something
 
-clang-format -style=file -i generic/tohil.c
+clang-format -style=file -i generic/*.h generic/*.c
 
 ### debugging tohil internals
 
