@@ -14,6 +14,9 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <object.h>
+#ifdef PYPY_VERSION
+#include <PyPy.h>
+#endif
 
 #include <tcl.h>
 
@@ -60,6 +63,12 @@ static Tcl_Interp *tcl_interp = NULL;
 static PyObject *pTohilHandleException = NULL;
 static PyObject *pTohilTclErrorClass = NULL;
 static PyObject *tohilTclObjIterator = NULL;
+
+#ifndef PYPY_VERSION
+static const char *pythonLibName = "libpython" PYTHON_VERSION ".so";
+#else
+static const char *pythonLibName = "libpypy3-c.so";
+#endif
 
 //
 // tohil_TclObjToUTF8 - convert a Tcl object (string in WTF-8) to real UTF-8
@@ -376,7 +385,11 @@ _pyObjToTcl(Tcl_Interp *interp, PyObject *pObj)
     } else if (PyNumber_Check(pObj)) {
         /* We go via string to support arbitrary length numbers */
         if (PyLong_Check(pObj)) {
+#ifndef PYPY_VERSION
             pStrObj = PyNumber_ToBase(pObj, 10);
+#else
+            pStrObj = PyObject_Str(pObj);
+#endif
         } else {
             assert(PyComplex_Check(pObj) || PyFloat_Check(pObj));
             pStrObj = PyObject_Str(pObj);
@@ -682,8 +695,7 @@ TohilImport_Cmd(ClientData clientData, /* Not used. */
     if (pMainModule == NULL)
         return PyReturnException(interp, "add module __main__ failed");
 
-    // We don't use PyImport_ImportModule so mod.submod works
-    pTopModule = PyImport_ImportModuleEx(modname, NULL, NULL, NULL);
+    pTopModule = PyImport_ImportModule(modname);
     if (pTopModule == NULL)
         return PyReturnException(interp, "import module failed");
 
@@ -715,7 +727,7 @@ TohilEval_Cmd(ClientData clientData, /* Not used. */
 
     // PyCompilerFlags flags = _PyCompilerFlags_INIT;
     // PyObject *code = Py_CompileStringExFlags(cmd, "tohil", Py_eval_input, &flags, -1);
-    PyObject *code = Py_CompileStringExFlags(cmd, "tohil", Py_eval_input, NULL, -1);
+    PyObject *code = Py_CompileStringFlags(cmd, "tohil", Py_eval_input, NULL);
     Tcl_DStringFree(&ds);
 
     if (code == NULL) {
@@ -753,7 +765,7 @@ TohilExec_Cmd(ClientData clientData, /* Not used. */
     Tcl_DString ds;
     const char *cmd = tohil_TclObjToUTF8(objv[1], &ds);
 
-    PyObject *code = Py_CompileStringExFlags(cmd, "tohil", Py_file_input, NULL, -1);
+    PyObject *code = Py_CompileStringFlags(cmd, "tohil", Py_file_input, NULL);
     Tcl_DStringFree(&ds);
 
     if (code == NULL) {
@@ -791,10 +803,14 @@ TohilInteract_Cmd(ClientData clientData, /* Not used. */
         return TCL_ERROR;
     }
 
+#ifndef PYPY_VERSION
     int result = PyRun_InteractiveLoop(stdin, "stdin");
     if (result < 0) {
         return PyReturnException(interp, "interactive loop failure");
     }
+#else
+    return PyReturnException(interp, "interactive loop not supported with pypy");
+#endif
 
     return TCL_OK;
 }
@@ -2808,6 +2824,7 @@ Tohil_Init(Tcl_Interp *interp)
     if (Tcl_CreateObjCommand(interp, "::tohil::interact", (Tcl_ObjCmdProc *)TohilInteract_Cmd, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL) == NULL)
         return TCL_ERROR;
 
+#ifndef PYPY_VERSION
     // if i haven't been told python is up, tcl is the parent,
     // and we need to initialize the python interpreter and
     // our python module
@@ -2821,19 +2838,17 @@ Tohil_Init(Tcl_Interp *interp)
                 Py_SetProgramName(wide_argv0);
             }
         }
-
         // NB without this ugly hack then on linux if tcl starts
         // python then python gets errors loading C shared libraries
         // such as "import sqlite3", where loading the shared library
         // causes a complaint about undefined symbols trying to access
         // python stuff
-        char *python_lib = "libpython" PYTHON_VERSION ".so";
-        if (dlopen(python_lib, RTLD_GLOBAL | RTLD_LAZY) == NULL) {
-            fprintf(stderr, "load %s failed\n", python_lib);
+        if (dlopen(pythonLibName, RTLD_GLOBAL | RTLD_LAZY) == NULL) {
+            fprintf(stderr, "load %s failed\n", pythonLibName);
         }
-
         Py_Initialize();
     }
+#endif
 
     // stash the Tcl interpreter pointer so the python side can find it later
     PyObject *main_module = PyImport_AddModule("__main__");
@@ -2878,6 +2893,26 @@ Tohil_Init(Tcl_Interp *interp)
 
     return TCL_OK;
 }
+
+#ifdef PYPY_VERSION
+static __attribute__((constructor)) void do_pypy_crap(void)
+{
+    // always run when lib is loaded
+    fprintf(stderr, "In 'constructor'\n");
+    rpython_startup_code();
+    fprintf(stderr, "running pypy_setup_home\n");
+    if (pypy_setup_home(NULL, 1)) {
+        // FIXME: This fails, but only when loading from the Tcl side -- it won't be able to find the OS
+        // module. What the hell?
+        fprintf(stderr, "...it failed, gonna pretend it didn't\n");
+    } else {
+        fprintf(stderr, "Did home setup...\n");
+    }
+    pypy_init_threads();
+    fprintf(stderr, "thread setup worked...\n");
+    pypy_execute_source("print(\"Looks like pypy might actually work...!\")");
+}
+#endif
 
 //
 // this is the entrypoint for when python loads us as a shared library

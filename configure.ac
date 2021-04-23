@@ -74,8 +74,10 @@ TEA_SETUP_COMPILER
 AC_ARG_WITH(python-include,  --with-python-include        directory containing python include files)
 AC_ARG_WITH(python-lib,  --with-python-lib        directory containing python library files)
 AC_ARG_WITH(python-version,  --with-python-version        python version (like 3.8))
+AC_ARG_ENABLE(pypy, --enable-pypy        enable pypy python interpreter)
 
 need_python_config=""
+
 
 if test "${with_python_include+set}" = "set"; then
     PYTHON_INCLUDES="-I'${with_python_include}'"
@@ -98,6 +100,18 @@ else
 fi
 AC_MSG_RESULT([using python version of... "$PYTHON_VERSION"])
 
+if test "x${enable_pypy}" != "xyes"; then
+    AC_MSG_RESULT([using cpython interpreter])
+    PYTHON_LIB_FLAG="-lpython${PYTHON_VERSION}"
+else
+    AC_MSG_RESULT([using pypy interpreter])
+    PYTHON_LIB_FLAG="-lpypy3-c"
+    if test "$need_python_config" = "1"; then
+        AC_MSG_ERROR([Enabling pypy requires specifying --with-python-include and --with-python-lib.])
+    fi
+fi
+
+
 if test "$need_python_config" = "1"; then
     AC_PATH_PROGS(PYTHON_CONFIG, python${PYTHON_VERSION}-config)
     if test "$PYTHON_CONFIG" = ""; then
@@ -116,6 +130,7 @@ fi
 AC_SUBST(PYTHON_INCLUDES)
 AC_SUBST(PYTHON_LIB_DIR)
 AC_SUBST(PYTHON_VERSION)
+AC_SUBST(PYTHON_LIB_FLAG)
 
 #-----------------------------------------------------------------------
 # __CHANGE__
